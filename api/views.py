@@ -22,9 +22,9 @@ from .permissions import (
 from .serializers import (
     ConfirmationCodeSerializer, UserEmailSerializer, UserSerializer,
     GenreSerializer, CategorySerializer, TitleSerializer,
-    TitleCreateSerializer
+    # TitleCreateSerializer
 )
-from .filters import TitlesFilter
+# from .filters import TitlesFilter
 
 
 @api_view(['POST'])
@@ -109,7 +109,7 @@ class GenreViewSet(viewsets.ModelViewSet):
     serializer_class = GenreSerializer
     http_method_names = ['get', 'post', 'head', 'delete']
     permission_classes = [
-        permissions.IsAuthenticatedOrReadOnly,
+        IsAuthenticatedOrReadOnly,
         IsAdminOrSuperUser
     ]
     filter_backends = [filters.SearchFilter]
@@ -121,7 +121,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
     serializer_class = CategorySerializer
     http_method_names = ['get', 'post', 'head', 'delete']
     permission_classes = [
-        permissions.IsAuthenticatedOrReadOnly,
+        IsAuthenticatedOrReadOnly,
         IsAdminOrSuperUser
     ]
     filter_backends = [filters.SearchFilter]
@@ -132,7 +132,7 @@ class TitleViewSet(viewsets.ModelViewSet):
     queryset = Title.objects.all()
     serializer_class = TitleSerializer
     permission_classes = [
-        permissions.IsAuthenticatedOrReadOnly,
+        IsAuthenticatedOrReadOnly,
         IsAdminOrSuperUser
     ]
     filter_backends = [filters.SearchFilter]

@@ -10,11 +10,11 @@ from .views import (
     TitleViewSet
     )
 
-router = DefaultRouter
+router = DefaultRouter()
 router.register('users', UserViewSet)
-router.register = ('genres', GenreViewSet)
-router.register = ('category', CategoryViewSet)
-router.register = ('title', TitleViewSet)
+router.register('genres', GenreViewSet)
+router.register('category', CategoryViewSet)
+router.register('title', TitleViewSet)
 
 
 urlpatterns = [
