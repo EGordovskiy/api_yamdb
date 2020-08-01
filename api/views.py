@@ -15,16 +15,16 @@ from rest_framework.permissions import (
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import Genre, Category, Title, User
+from .filters import TitlesFilter
+from .models import Category, Comment, Genre, Review, Title, User
 from .permissions import (
     IsAdminOrSuperUser, ReviewCommentPermissions, PermissionMixin
 )
 from .serializers import (
-    ConfirmationCodeSerializer, UserEmailSerializer, UserSerializer,
-    GenreSerializer, CategorySerializer, TitleSerializer,
-    # TitleCreateSerializer
+    CategorySerializer, CommentSerializer, ConfirmationCodeSerializer,
+    GenreSerializer, ReviewSerializer, TitleCreateSerializer,
+    TitleListSerializer, UserEmailSerializer, UserSerializer
 )
-# from .filters import TitlesFilter
 
 
 @api_view(['POST'])
@@ -32,19 +32,16 @@ from .serializers import (
 def get_confirmation_code(request):
     username = request.data.get('username')
     serializer = UserEmailSerializer(data=request.data)
-
-    if not serializer.is_valid():
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    serializer.is_valid(raise_exception=True)
 
     email = serializer.data.get('email')
-    if username is not None:
-        try:
-            User.objects.create_user(username=username, email=email)
-        except IntegrityError:
-            return Response(
-                {'Error': 'The user already exists.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+    try:
+        User.objects.create_user(username=username, email=email)
+    except IntegrityError:
+        return Response(
+            {'Error': 'The user already exists.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
     user = get_object_or_404(User, email=email)
     confirmation_code = default_token_generator.make_token(user)
@@ -74,7 +71,9 @@ def get_jwt_token(request):
 
     if default_token_generator.check_token(user, confirmation_code):
         refresh = RefreshToken.for_user(user)
-        return Response({'access': refresh.access_token}, status=status.HTTP_200_OK)
+        return Response(
+            {'access': refresh.access_token}, status=status.HTTP_200_OK
+    )
 
     return Response(
         {'confirmation_code': 'Bad confirmation code.'},
@@ -104,37 +103,67 @@ class UserViewSet(viewsets.ModelViewSet):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class GenreViewSet(viewsets.ModelViewSet):
-    queryset = Genre.objects.all()
-    serializer_class = GenreSerializer
-    http_method_names = ['get', 'post', 'head', 'delete']
-    permission_classes = [
-        IsAuthenticatedOrReadOnly,
-        IsAdminOrSuperUser
-    ]
-    filter_backends = [filters.SearchFilter]
-    search_fields = ['name']
+class ReviewViewSet(viewsets.ModelViewSet):
+    serializer_class = ReviewSerializer
+    pagination_class = PageNumberPagination
+    permission_classes = [ReviewCommentPermissions, IsAuthenticatedOrReadOnly]
+
+    def get_queryset(self):
+        title = get_object_or_404(Title, pk=self.kwargs.get('title'))
+        return Review.objects.filter(title=title)
+
+    def perform_create(self, serializer):
+        title = get_object_or_404(Title, pk=self.kwargs.get('title'))
+        serializer.save(author=self.request.user, title=title)
 
 
-class CategoryViewSet(viewsets.ModelViewSet):
+class CommentViewSet(viewsets.ModelViewSet):
+    serializer_class = CommentSerializer
+    pagination_class = PageNumberPagination
+    permission_classes = [ReviewCommentPermissions, IsAuthenticatedOrReadOnly]
+
+    def perform_create(self, serializer):
+        review = get_object_or_404(Review, pk=self.kwargs.get('review_id'))
+        serializer.save(author=self.request.user, review=review)
+
+    def get_queryset(self):
+        review = get_object_or_404(Review, pk=self.kwargs.get('review_id'))
+        return Comment.objects.filter(review=review)
+
+
+class CategoryViewSet(
+    PermissionMixin,
+    mixins.CreateModelMixin, mixins.ListModelMixin,
+    mixins.DestroyModelMixin, viewsets.GenericViewSet,
+    
+):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
-    http_method_names = ['get', 'post', 'head', 'delete']
-    permission_classes = [
-        IsAuthenticatedOrReadOnly,
-        IsAdminOrSuperUser
-    ]
+    pagination_class = PageNumberPagination
     filter_backends = [filters.SearchFilter]
-    search_fields = ['name']
+    lookup_field = 'slug'
+    search_fields = ['=name']
 
 
-class TitleViewSet(viewsets.ModelViewSet):
-    queryset = Title.objects.all()
-    serializer_class = TitleSerializer
-    permission_classes = [
-        IsAuthenticatedOrReadOnly,
-        IsAdminOrSuperUser
-    ]
+class GenreViewSet(
+    PermissionMixin,
+    mixins.CreateModelMixin, mixins.ListModelMixin,
+    mixins.DestroyModelMixin, viewsets.GenericViewSet,
+):    
+    queryset = Genre.objects.all()
+    serializer_class = GenreSerializer
     filter_backends = [filters.SearchFilter]
-    search_fields = ['name', 'year', 'genre', 'category']
+    lookup_field = 'slug'
+    search_fields = ['=name']
 
+
+class TitleViewSet(PermissionMixin, viewsets.ModelViewSet):
+    queryset = Title.objects.annotate(rating=Avg('reviews__score'))
+    pagination_class = PageNumberPagination
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = TitlesFilter
+
+    def get_serializer_class(self):
+        if self.action in ('create', 'update', 'partial_update'):
+            return TitleCreateSerializer
+        return TitleListSerializer

@@ -1,5 +1,6 @@
 from rest_framework import serializers
-from .models import Category, Genre, Title, User
+
+from .models import Category, Comment, Genre, Review, Title, User
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -10,6 +11,7 @@ class UserSerializer(serializers.ModelSerializer):
 
 class UserEmailSerializer(serializers.Serializer):
     email = serializers.EmailField(required=True)
+    username = serializers.CharField(required=True)
 
 
 class ConfirmationCodeSerializer(serializers.Serializer):
@@ -17,22 +19,66 @@ class ConfirmationCodeSerializer(serializers.Serializer):
     confirmation_code = serializers.CharField(required=True)
 
 
+class CategorySerializer(serializers.ModelSerializer):
 
-class CategorySerializer(serializers.Serializer):
     class Meta:
-        fields = '__all__'
+        fields = ('name', 'slug') 
         model = Category
 
 
-class GenreSerializer(serializers.Serializer):
+class GenreSerializer(serializers.ModelSerializer):
+
     class Meta:
-        fields = '__all__'
+        fields = ('name', 'slug') 
         model = Genre
 
-class TitleSerializer(serializers.Serializer):
-    genre = GenreSerializer(many=True, read_only=True)
-    category = CategorySerializer(read_only=True)
+
+class TitleCreateSerializer(serializers.ModelSerializer):
+    genre = serializers.SlugRelatedField(slug_field='slug', many=True, queryset=Genre.objects.all())
+    category = serializers.SlugRelatedField(slug_field='slug', queryset=Category.objects.all())
 
     class Meta:
         fields = '__all__'
         model = Title
+
+
+class TitleListSerializer(serializers.ModelSerializer):
+    genre = GenreSerializer(many=True)
+    category = CategorySerializer()
+    rating = serializers.FloatField()
+
+    class Meta:
+        fields = ('id', 'name', 'year', 'genre', 'rating', 'category', 'description')
+        model = Title
+
+
+class ReviewSerializer(serializers.ModelSerializer):
+    author = serializers.StringRelatedField()
+
+    def validate(self, attrs):
+        request = self.context['request']
+        if request.method != 'POST':
+            return attrs
+
+        title = Title.objects.filter(pk=self.context['view'].kwargs.get('title')).exists()
+        if not title:
+            return attrs
+
+        title = Title.objects.get(pk=self.context['view'].kwargs.get('title'))
+        exist = Review.objects.filter(author=request.user).filter(title=title).exists()
+        if exist:
+            raise serializers.ValidationError('One user can make only one review per title.')
+        
+        return attrs
+
+    class Meta:
+        fields = ('id', 'title_id', 'text', 'author', 'score', 'pub_date')
+        model = Review
+        
+
+class CommentSerializer(serializers.ModelSerializer):
+    author = serializers.StringRelatedField()
+
+    class Meta:
+        fields = ('id', 'review_id', 'text', 'author', 'pub_date')
+        model = Comment
